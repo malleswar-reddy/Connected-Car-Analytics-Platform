@@ -8,5 +8,5 @@ spring:
 gps:
   topic: car-gps-data
   bootstrap-servers: localhost:9092
-  car-count: 100
+  car-count: 10
   publish-interval-ms: 2000

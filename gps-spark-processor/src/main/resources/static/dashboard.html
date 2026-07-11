@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Driving Behavior Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          border: '#e2e8f0',
+          muted: '#64748b',
+        }
+      }
+    }
+  }
+</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; background: #f8fafc; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 0.75rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+  .badge { display:inline-flex; align-items:center; border-radius:9999px; padding:0.125rem 0.625rem; font-size:0.75rem; font-weight:500; }
+  table { border-collapse: collapse; width: 100%; }
+  th { text-align:left; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.02em; color:#64748b; font-weight:600; padding:0.5rem 0.75rem; border-bottom:1px solid #e2e8f0; }
+  td { padding:0.55rem 0.75rem; font-size:0.875rem; border-bottom:1px solid #f1f5f9; }
+  tr:hover td { background:#f8fafc; }
+</style>
+</head>
+<body class="text-slate-900">
+<div class="max-w-7xl mx-auto px-6 py-8 space-y-6">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Driving Behavior Dashboard</h1>
+      <p class="text-sm text-muted mt-1">Live view of <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">car_trip_behavior</code>, produced by the Spark driving-behavior job</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <label class="flex items-center gap-2 text-sm text-muted mr-2">
+        <input type="checkbox" id="auto-refresh" checked class="rounded border-slate-300">
+        Auto-refresh
+      </label>
+      <button id="refresh-btn" class="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50">
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- Job control -->
+  <div class="card p-4">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <div class="flex items-center gap-3">
+        <span id="job-dot" class="inline-block w-2.5 h-2.5 rounded-full bg-slate-300"></span>
+        <span class="text-sm font-medium">Spark job:</span>
+        <span id="job-status-text" class="text-sm text-muted">checking...</span>
+      </div>
+      <div class="flex gap-2">
+        <button id="start-btn" class="px-3 py-1.5 text-sm font-medium rounded-lg bg-slate-900 text-white hover:bg-slate-700">Start</button>
+        <button id="stop-btn" class="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50">Stop</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI cards -->
+  <div id="kpi-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"></div>
+
+  <!-- Per-car risk -->
+  <div class="card">
+    <div class="px-5 py-4 border-b border-slate-200">
+      <h2 class="font-semibold">Per-Car Risk Summary</h2>
+      <p class="text-xs text-muted mt-0.5">Risk score is a placeholder heuristic (weighted harsh-event count), not the real underwriting model</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Car</th><th>Trips</th><th>Avg speed</th><th>Max speed</th>
+            <th>Harsh brake</th><th>Harsh accel</th><th>Speeding</th><th>Risk score</th>
+          </tr>
+        </thead>
+        <tbody id="per-car-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Recent trips -->
+  <div class="card">
+    <div class="px-5 py-4 border-b border-slate-200">
+      <h2 class="font-semibold">Recent Trips</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Trip</th><th>Car</th><th>Status</th><th>Start</th><th>End</th>
+            <th>Pings</th><th>Avg speed</th><th>Max speed</th>
+            <th>Harsh brake</th><th>Harsh accel</th><th>Speeding</th>
+          </tr>
+        </thead>
+        <tbody id="recent-trips-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API_BASE = ''; // same-origin: served by this Spring Boot app
+
+  function riskBadgeClass(score) {
+    if (score < 34) return 'bg-emerald-100 text-emerald-700';
+    if (score < 67) return 'bg-amber-100 text-amber-700';
+    return 'bg-rose-100 text-rose-700';
+  }
+
+  function statusBadgeClass(status) {
+    return status === 'OPEN' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600';
+  }
+
+  function fmtNum(n, digits = 1) {
+    return (typeof n === 'number') ? n.toFixed(digits) : '—';
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function renderKpis(summary) {
+    const cards = [
+      { label: 'Total trips', value: summary.totalTrips },
+      { label: 'Cars tracked', value: summary.totalCars },
+      { label: 'Avg speed (km/h)', value: fmtNum(summary.avgSpeedKmh) },
+      { label: 'Harsh brake events', value: summary.totalHarshBrakeEvents },
+      { label: 'Harsh accel events', value: summary.totalHarshAccelEvents },
+      { label: 'Speeding events', value: summary.totalSpeedingEvents },
+    ];
+    document.getElementById('kpi-grid').innerHTML = cards.map(c => `
+      <div class="card p-4">
+        <div class="text-xs text-muted font-medium">${c.label}</div>
+        <div class="text-2xl font-semibold mt-1">${c.value}</div>
+      </div>
+    `).join('');
+  }
+
+  function renderPerCar(rows) {
+    document.getElementById('per-car-body').innerHTML = rows.map(r => `
+      <tr>
+        <td class="font-medium">${r.carId}</td>
+        <td>${r.tripCount}</td>
+        <td>${fmtNum(r.avgSpeedKmh)}</td>
+        <td>${fmtNum(r.maxSpeedKmh)}</td>
+        <td>${r.harshBrakeCount}</td>
+        <td>${r.harshAccelCount}</td>
+        <td>${r.speedingCount}</td>
+        <td><span class="badge ${riskBadgeClass(r.riskScore)}">${r.riskScore}</span></td>
+      </tr>
+    `).join('') || `<tr><td colspan="8" class="text-center text-muted py-6">No data yet — start the job and let a few trips accumulate</td></tr>`;
+  }
+
+  function renderRecentTrips(rows) {
+    document.getElementById('recent-trips-body').innerHTML = rows.map(r => `
+      <tr>
+        <td class="font-mono text-xs text-muted">${r.tripId.slice(0, 18)}…</td>
+        <td class="font-medium">${r.carId}</td>
+        <td><span class="badge ${statusBadgeClass(r.status)}">${r.status}</span></td>
+        <td>${fmtTime(r.tripStart)}</td>
+        <td>${fmtTime(r.tripEnd)}</td>
+        <td>${r.pingCount}</td>
+        <td>${fmtNum(r.avgSpeedKmh)}</td>
+        <td>${fmtNum(r.maxSpeedKmh)}</td>
+        <td>${r.harshBrakeCount}</td>
+        <td>${r.harshAccelCount}</td>
+        <td>${r.speedingCount}</td>
+      </tr>
+    `).join('') || `<tr><td colspan="11" class="text-center text-muted py-6">No trips yet</td></tr>`;
+  }
+
+  async function loadDashboard() {
+    try {
+      const res = await fetch(`${API_BASE}/api/dashboard?recentTripsLimit=25`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      renderKpis(data.summary);
+      renderPerCar(data.perCar);
+      renderRecentTrips(data.recentTrips);
+    } catch (err) {
+      console.error('Failed to load dashboard data', err);
+    }
+  }
+
+  async function loadJobStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/api/spark/driving-behavior/status`);
+      const data = await res.json();
+      const dot = document.getElementById('job-dot');
+      const text = document.getElementById('job-status-text');
+      if (data.running) {
+        dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-emerald-500';
+        text.textContent = `running (query ${data.queryId?.slice(0, 8)}…)`;
+      } else if (data.lastErrorMessage) {
+        dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-rose-500';
+        text.textContent = `stopped with error: ${data.lastErrorMessage}`;
+      } else {
+        dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-slate-300';
+        text.textContent = 'not running';
+      }
+    } catch (err) {
+      console.error('Failed to load job status', err);
+    }
+  }
+
+  async function refreshAll() {
+    await Promise.all([loadDashboard(), loadJobStatus()]);
+  }
+
+  document.getElementById('refresh-btn').addEventListener('click', refreshAll);
+
+  document.getElementById('start-btn').addEventListener('click', async () => {
+    await fetch(`${API_BASE}/api/spark/driving-behavior/start`, { method: 'POST' });
+    await loadJobStatus();
+  });
+
+  document.getElementById('stop-btn').addEventListener('click', async () => {
+    await fetch(`${API_BASE}/api/spark/driving-behavior/stop`, { method: 'POST' });
+    await loadJobStatus();
+  });
+
+  let intervalId = setInterval(refreshAll, 5000);
+  document.getElementById('auto-refresh').addEventListener('change', (e) => {
+    clearInterval(intervalId);
+    if (e.target.checked) {
+      intervalId = setInterval(refreshAll, 5000);
+    }
+  });
+
+  refreshAll();
+</script>
+</body>
+</html>

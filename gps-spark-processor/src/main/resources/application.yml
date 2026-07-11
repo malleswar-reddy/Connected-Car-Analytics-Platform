@@ -4,6 +4,14 @@ server:
 spring:
   application:
     name: gps-spark-processor
+  # Separate from gps.jdbc-* below: that one is used by TripEventJdbcSink on
+  # Spark's executor threads via plain DriverManager. This one lets Spring Boot
+  # autoconfigure a JdbcTemplate bean for the dashboard's read-only queries.
+  # Same DB, same credentials, two different connection paths by design.
+  datasource:
+    url: jdbc:postgresql://localhost:5432/gpsdb
+    username: gps
+    password: gps
 
 gps:
   spark-master: local[*]

@@ -39,6 +39,7 @@ import static org.apache.spark.sql.functions.to_timestamp;
  * StreamingQuery handle immediately and Spark keeps running the micro-batches
  * on its own threads, so a REST call can trigger this and return right away
  * instead of blocking the HTTP thread on awaitTermination().
+ *
  * See GpsDrivingBehaviorJob's original javadoc-equivalent caveats, still true
  * here: fixed harsh-brake/accel thresholds, flat speed limit (no map
  * matching), ProcessingTimeTimeout (wall-clock) rather than event-time
@@ -101,8 +102,9 @@ public class DrivingBehaviorStreamingService {
                 sparkSession = SparkSession.builder()
                         .appName("gps-driving-behavior-job")
                         .master(sparkMaster)
+                        .config("spark.ui.enabled", "false") // <--- Add this line
                         .getOrCreate();
-                sparkSession.sparkContext().setLogLevel("WARN");
+                // sparkSession.sparkContext().setLogLevel("WARN");
             }
 
             StructType gpsSchema = new StructType()
@@ -118,6 +120,7 @@ public class DrivingBehaviorStreamingService {
                     .option("kafka.bootstrap.servers", bootstrapServers)
                     .option("subscribe", inputTopic)
                     .option("startingOffsets", "latest")
+                    .option("failOnDataLoss", "false") // <--- Add this option
                     .load();
 
             Dataset<Row> parsed = kafkaRaw
@@ -148,15 +151,25 @@ public class DrivingBehaviorStreamingService {
                             GroupStateTimeout.ProcessingTimeTimeout()
                     );
 
-            TripEventJdbcSink sink = new TripEventJdbcSink(jdbcUrl, jdbcUser, jdbcPassword);
+            //TripEventJdbcSink sink = new TripEventJdbcSink(jdbcUrl, jdbcUser, jdbcPassword);
 
             streamingQuery = tripEvents.writeStream()
                     .outputMode(OutputMode.Append())
-                    .foreachBatch((VoidFunction2<Dataset<TripEvent>, Long>) (batchDf, batchId) ->
-                            batchDf.foreachPartition((ForeachPartitionFunction<TripEvent>) sink::writePartition))
+                    .foreachBatch((VoidFunction2<Dataset<TripEvent>, Long>) (batchDf, batchId) -> {
+                        // Instantiate/reference parameters safely inside the lambda closure
+                        final String url = jdbcUrl;
+                        final String user = jdbcUser;
+                        final String pass = jdbcPassword;
+
+                        batchDf.foreachPartition((ForeachPartitionFunction<TripEvent>) partitionIterator -> {
+                            // Instantiating the sink inside the worker boundary completely avoids serialization crashes
+                            TripEventJdbcSink localSink = new TripEventJdbcSink(url, user, pass);
+                            localSink.writePartition(partitionIterator);
+                        });
+                    })
                     .option("checkpointLocation", checkpointLocation)
                     .trigger(Trigger.ProcessingTime("10 seconds"))
-                    .start(); // non-blocking: runs on Spark's own background threads
+                    .start();
 
             log.info("Driving-behavior streaming job started, queryId={}", streamingQuery.id());
             return status();
