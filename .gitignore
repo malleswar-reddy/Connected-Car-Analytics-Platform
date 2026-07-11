@@ -1,0 +1,68 @@
+# ==========================================
+# Compiled Java Classes & Build Artifacts
+# ==========================================
+*.class
+*.log
+*.ctxt
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# ==========================================
+# Build Tools Output
+# ==========================================
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.next
+pom.xml.versionsBackup
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# ==========================================
+# IDE Specific Files
+# ==========================================
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# Eclipse
+.metadata/
+.classpath
+.project
+.settings/
+*.launch
+
+# NetBeans
+**/nbproject/private/
+**/nbproject/project.properties
+**/nbproject/project.xml
+**/nbbuild/
+**/dist/
+**/nbdist/
+.nb-gradle/
+
+# Visual Studio Code
+.vscode/
+
+# ==========================================
+# OS Specific Trash
+# ==========================================
+.DS_Store
+Thumbs.db

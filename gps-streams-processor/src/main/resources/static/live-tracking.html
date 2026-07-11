@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Live Car Tracking Demo</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" rel="stylesheet"/>
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            font-family: system-ui, sans-serif;
+        }
+
+        #map {
+            height: 100%;
+        }
+
+        #status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+            font-size: 13px;
+        }
+
+        .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+
+        .dot.connected {
+            background: #2ecc71;
+        }
+
+        .dot.disconnected {
+            background: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+<div id="status"><span class="dot disconnected" id="dot"></span><span id="status-text">connecting...</span></div>
+<div id="map"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+    const map = L.map('map').setView([37.7749, -122.4194], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const markers = {}; // carId -> L.marker
+
+    function upsertCar(car) {
+        const label = `${car.carId}<br>${car.speedKmh.toFixed(0)} km/h`;
+        if (markers[car.carId]) {
+            markers[car.carId].setLatLng([car.latitude, car.longitude]);
+            markers[car.carId].setPopupContent(label);
+        } else {
+            markers[car.carId] = L.marker([car.latitude, car.longitude])
+                .addTo(map)
+                .bindPopup(label);
+        }
+    }
+
+    function renderAll(cars) {
+        cars.forEach(upsertCar);
+    }
+
+    // 1. initial snapshot over plain REST, so the map isn't empty while we wait
+    //    for the first websocket tick
+    fetch('/api/live/cars')
+        .then(r => r.json())
+        .then(renderAll)
+        .catch(err => console.error('Failed to load initial snapshot', err));
+
+    // 2. live updates over WebSocket
+    const dot = document.getElementById('dot');
+    const statusText = document.getElementById('status-text');
+
+    function connect() {
+        const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${proto}://${window.location.host}/ws/car-positions`);
+
+        ws.onopen = () => {
+            dot.className = 'dot connected';
+            statusText.textContent = 'live';
+        };
+        ws.onclose = () => {
+            dot.className = 'dot disconnected';
+            statusText.textContent = 'disconnected — retrying in 3s';
+            setTimeout(connect, 3000);
+        };
+        ws.onerror = () => ws.close();
+        ws.onmessage = (event) => {
+            const cars = JSON.parse(event.data);
+            renderAll(cars);
+        };
+    }
+
+    connect();
+</script>
+</body>
+</html>

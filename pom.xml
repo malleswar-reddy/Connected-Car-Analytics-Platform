@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.16</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+
+    <groupId>com.demo</groupId>
+    <artifactId>Connected-Car-Analytics-Platform</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>Connected-Car-Analytics-Platform</name>
+    <description>Parent build: car GPS simulator + Kafka Streams processor</description>
+
+    <properties>
+        <java.version>21</java.version>
+    </properties>
+
+    <!-- Child modules build against the Spring Boot BOM inherited from spring-boot-starter-parent,
+         so kafka-streams / postgresql / jackson versions all stay aligned automatically. -->
+    <modules>
+        <module>gps-simulator</module>
+        <module>gps-streams-processor</module>
+        <module>gps-spark-processor</module>
+    </modules>
+
+</project>

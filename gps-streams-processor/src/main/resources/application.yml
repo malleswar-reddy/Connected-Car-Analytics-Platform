@@ -1,0 +1,23 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: gps-streams-processor
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/gpsdb
+    username: gps
+    password: gps
+    driver-class-name: org.postgresql.Driver
+  sql:
+    init:
+      mode: always   # run schema.sql on every startup (idempotent, uses IF NOT EXISTS)
+
+gps:
+  input-topic: car-gps-data
+  stats-output-topic: car-speed-stats
+  bootstrap-servers: localhost:9092
+  application-id: gps-streams-processor
+  window-size-seconds: 30
+  window-grace-seconds: 5

@@ -1,0 +1,19 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: gps-spark-processor
+
+gps:
+  spark-master: local[*]
+  bootstrap-servers: localhost:9092
+  input-topic: car-gps-data
+  checkpoint-location: /tmp/gps-spark-checkpoint
+  jdbc-url: jdbc:postgresql://localhost:5432/gpsdb
+  jdbc-user: gps
+  jdbc-password: gps
+  trip-gap-minutes: 15
+  harsh-brake-threshold: 10.0
+  harsh-accel-threshold: 8.0
+  speed-limit-kmh: 100.0
