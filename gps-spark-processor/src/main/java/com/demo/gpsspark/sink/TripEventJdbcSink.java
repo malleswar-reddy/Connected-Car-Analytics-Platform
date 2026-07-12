@@ -12,9 +12,10 @@ import java.util.Iterator;
  * Upserts TripEvent rows into car_trip_behavior. Runs on the executor (called
  * from Dataset.foreachPartition inside a foreachBatch sink), so each
  * partition opens and closes its own JDBC connection -- standard pattern for
- * Spark's foreachBatch + JDBC, avoids funnelling everything through the driver.
+ * Spark's foreachBatch + JDBC, avoids funneling everything through the driver.
+ * Implements AutoCloseable to support memory-safe try-with-resources cleanups.
  */
-public class TripEventJdbcSink {
+public class TripEventJdbcSink implements AutoCloseable {
 
     private final String jdbcUrl;
     private final String user;
@@ -78,5 +79,11 @@ public class TripEventJdbcSink {
         } catch (Exception e) {
             throw new RuntimeException("Failed to write trip events batch to Postgres", e);
         }
+    }
+
+    @Override
+    public void close() throws Exception {
+        // SQL resources are scoped tightly inside the writePartition try-with-resources.
+        // This method satisfies the AutoCloseable interface requirements.
     }
 }

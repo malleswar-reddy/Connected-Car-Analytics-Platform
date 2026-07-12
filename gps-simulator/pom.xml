@@ -18,7 +18,7 @@
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
+            <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         <!-- raw Kafka client is enough for a producer; brought in transitively
              by kafka-streams in the sibling module, added explicitly here since

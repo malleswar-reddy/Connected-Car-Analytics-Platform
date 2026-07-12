@@ -8,5 +8,32 @@ spring:
 gps:
   topic: car-gps-data
   bootstrap-servers: localhost:9092
-  car-count: 10
+  car-count: 50
   publish-interval-ms: 2000
+
+  # speed limit used by both the speeding scenario (how far "over" to go) and
+  # kept here in sync with the Spark job's GPS_SPEED_LIMIT_KMH / gps.speed-limit-kmh
+  speed-limit-kmh: 100.0
+
+  # baseline "normal driving" behavior -- smoothed random walk, not a fresh
+  # random draw every tick, so it stays physically plausible and doesn't
+  # accidentally trip harsh-brake/accel detection on its own
+  normal-driving:
+    max-speed-kmh: 100.0
+    max-speed-change-per-tick-kmh: 10.0
+
+  # POST /api/simulator/scenarios/harsh-driving
+  # queues one acceleration spike immediately followed by one braking drop;
+  # both comfortably exceed typical harsh-brake/accel thresholds (~8-10 km/h
+  # per second) over one 2s publish interval
+  harsh-driving-scenario:
+    accel-spike-kmh: 45.0
+    brake-drop-kmh: 55.0
+
+  # POST /api/simulator/scenarios/speeding
+  # queues N pings (default-duration-ticks) at speed-limit-kmh + a random
+  # amount between min-over-kmh and max-over-kmh
+  speeding-scenario:
+    min-over-kmh: 15.0
+    max-over-kmh: 50.0
+    default-duration-ticks: 3

@@ -450,6 +450,71 @@ Specializing in:
 
 ---
 
+
+## Scenario injection — provoke harsh-driving/speeding on demand
+
+Waiting for random noise to happen to trigger the dashboard isn't a great
+demo experience, so `gps-simulator` now exposes two endpoints:
+
+```bash
+# harsh acceleration spike immediately followed by a harsh braking drop
+curl -X POST "localhost:8081/api/simulator/scenarios/harsh-driving?carId=car-1"
+
+# N pings (default 3) above the speed limit
+curl -X POST "localhost:8081/api/simulator/scenarios/speeding?carId=car-2&durationTicks=5"
+```
+`carId` is optional on both — omit it and a random currently-simulated car is
+used. Both are also wired into buttons on `dashboard.html` (car dropdown +
+"Harsh driving" / "Speeding" buttons), calling `gps-simulator` on `:8081`
+directly from the browser.
+
+**Underlying fix worth knowing about:** the simulator previously drew a
+completely fresh random speed (0-120 km/h) every 2s tick, independent of the
+previous tick. That means huge speed deltas — i.e. "harsh braking" by the
+Spark job's definition — were already happening constantly by accident,
+which would have made a deliberately-triggered scenario indistinguishable
+from background noise. Normal driving is now a smoothed random walk
+(`gps.normal-driving.max-speed-change-per-tick-kmh`, default ±10 km/h per
+tick) that stays well under the harsh-event thresholds on its own, so an
+injected scenario actually stands out. This lives in `GpsSimulatorScheduler`:
+an `overrideQueues` map (carId → queued forced speeds) is drained before the
+normal random walk runs each tick, then the walk continues smoothly from
+wherever the injected scenario left off.
+
+All the new thresholds (`normal-driving`, `harsh-driving-scenario`,
+`speeding-scenario`, `speed-limit-kmh`) live in `gps-simulator`'s
+`application.yml` — `speed-limit-kmh` is intentionally kept in sync with the
+Spark job's own `speed-limit-kmh` / `GPS_SPEED_LIMIT_KMH` default (100), but
+they're two separate config values in two separate modules, so if you change
+one, change the other too.
+
+**Note:** `@CrossOrigin(origins = "*")` on `ScenarioController` is demo-only,
+same pattern as elsewhere in this project — the dashboard (`:8083`) calling
+the simulator (`:8081`) is a genuine cross-origin call this time, so it's
+actually needed here, not just harmless-but-unused. Lock it down before
+production.
+
+## Design notes worth knowing
+- **Topology is framework-agnostic**: `GpsStreamsTopology.build(...)` takes plain
+  `Consumer<GpsData>` / `Consumer<SpeedStats>` sinks instead of the JDBC repositories
+  directly, so `GpsStreamsTopologyTest` exercises it with `TopologyTestDriver` and
+  no Spring context, no broker, no DB.
+- **`EXACTLY_ONCE_V2`** is set on the Streams config — this guarantees the
+  consume → update-state-store → produce-to-`car-speed-stats` cycle is atomic
+  even across rebalances/retries. It does **not** extend to the JDBC writes
+  inside `foreach`, since those are a side effect outside Kafka's transaction —
+  if you need the DB write itself to be exactly-once, either make the upsert
+  idempotent (as `car_speed_window_stats` already is, via `ON CONFLICT`) or
+  move to a transactional outbox / Kafka Connect JDBC sink instead of `foreach`.
+- **Raw ping writes are plain inserts**, not idempotent — a Streams restart can
+  redeliver and duplicate rows in `gps_ping` unless you add a unique constraint
+  (e.g. on `(car_id, event_timestamp)`) with `ON CONFLICT DO NOTHING`.
+- `car_speed_window_stats` upserts are safe to replay since the primary key is
+  `(car_id, window_start)` and Streams re-emits the same window repeatedly as
+  more pings arrive — that's expected windowed-aggregation behavior, not a bug.
+- Swap `JsonSerde` for Avro/Protobuf + Schema Registry once more than one team
+  owns `car-gps-data` / `car-speed-stats`.
+  
 ## ⭐ If you find this project useful, consider giving it a Star on GitHub!
 
 

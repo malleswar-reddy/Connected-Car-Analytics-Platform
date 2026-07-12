@@ -102,7 +102,12 @@ public class DrivingBehaviorStreamingService {
                 sparkSession = SparkSession.builder()
                         .appName("gps-driving-behavior-job")
                         .master(sparkMaster)
-                        .config("spark.ui.enabled", "false") // <--- Add this line
+                        .config("spark.ui.enabled", "false")
+
+                        // Memory Management Tuning for Embedded Application Services
+                        .config("spark.sql.streaming.minBatchesToRetain", "2")
+                        .config("spark.sql.ui.retainedExecutionPerQuery", "5")
+                        .config("spark.sql.streaming.stateStore.maintenanceInterval", "60s")
                         .getOrCreate();
                 // sparkSession.sparkContext().setLogLevel("WARN");
             }
@@ -120,7 +125,7 @@ public class DrivingBehaviorStreamingService {
                     .option("kafka.bootstrap.servers", bootstrapServers)
                     .option("subscribe", inputTopic)
                     .option("startingOffsets", "latest")
-                    .option("failOnDataLoss", "false") // <--- Add this option
+                    .option("failOnDataLoss", "false") // Bypasses micro-batch crashes when offsets reset
                     .load();
 
             Dataset<Row> parsed = kafkaRaw
@@ -162,9 +167,13 @@ public class DrivingBehaviorStreamingService {
                         final String pass = jdbcPassword;
 
                         batchDf.foreachPartition((ForeachPartitionFunction<TripEvent>) partitionIterator -> {
-                            // Instantiating the sink inside the worker boundary completely avoids serialization crashes
-                            TripEventJdbcSink localSink = new TripEventJdbcSink(url, user, pass);
-                            localSink.writePartition(partitionIterator);
+                            // try-with-resources cleans up JDBC connections per partition task, preventing leaks
+                            try (TripEventJdbcSink localSink = new TripEventJdbcSink(url, user, pass)) {
+                                localSink.writePartition(partitionIterator);
+                            } catch (Exception e) {
+                                log.error("Error writing batch partition processing metrics to database target", e);
+                                throw e;
+                            }
                         });
                     })
                     .option("checkpointLocation", checkpointLocation)
