@@ -1,4 +1,4 @@
-package com.demo.gpssimulator.web;
+package com.demo.gpssimulator.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
