@@ -1,5 +1,6 @@
 package com.demo.gpssimulator.web;
 
+import com.demo.gpssimulator.dto.ScenarioResponse;
 import com.demo.gpssimulator.scheduler.GpsSimulatorScheduler;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
